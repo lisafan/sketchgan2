@@ -30,7 +30,7 @@ parser.add_argument("--save_freq", type=int, default=5000, help="save model ever
 
 parser.add_argument("--aspect_ratio", type=float, default=1.0, help="aspect ratio of output images (width/height)")
 parser.add_argument("--lab_colorization", action="store_true", help="split input image into brightness (A) and color (B)")
-parser.add_argument("--batch_size", type=int, default=64, help="number of images in batch")
+parser.add_argument("--batch_size", type=int, default=32, help="number of images in batch")
 parser.add_argument("--which_direction", type=str, default="AtoB", choices=["AtoB", "BtoA"])
 parser.add_argument("--ngf", type=int, default=64, help="number of generator filters in first conv layer")
 parser.add_argument("--ndf", type=int, default=64, help="number of discriminator filters in first conv layer")
@@ -49,6 +49,7 @@ a = parser.parse_args()
 
 EPS = 1e-12
 CROP_SIZE = 256
+NUM_CLASSES = 100
 
 Examples = collections.namedtuple("Examples", "paths, inputs, targets, count, steps_per_epoch")
 Model = collections.namedtuple("Model", "outputs, predict_real, predict_fake, discrim_loss, discrim_grads_and_vars, gen_loss_GAN, gen_loss_L1, gen_grads_and_vars, train")
@@ -425,8 +426,15 @@ def create_model(inputs, targets):
         # layer_5: [batch, 31, 31, ndf * 8] => [batch, 30, 30, 1]
         with tf.variable_scope("layer_%d" % (len(layers) + 1)):
             convolved = conv(rectified, out_channels=1, stride=1)
-            output = tf.sigmoid(convolved)
-            layers.append(output)
+            #output = tf.sigmoid(convolved)
+            #layers.append(output)
+            layers.append(convolved)
+
+	# layer 6: [batch, 30, 30, 1] => [batch, 2k]
+	with tf.variable_scope("layer_%d" % (len(layers) + 1)):
+	    conv_flat = tf.reshape(layers[-1], [-1, 30*30*1])
+	    fully_connected = tf.layers.dense(conv_flat, units=(2 * NUM_CLASSES))
+	    layers.append(fully_connected)
 
         return layers[-1]
 
@@ -438,19 +446,30 @@ def create_model(inputs, targets):
     # they share the same underlying variables
     with tf.name_scope("real_discriminator"):
         with tf.variable_scope("discriminator"):
-            # 2x [batch, height, width, channels] => [batch, 30, 30, 1]
-            predict_real = create_discriminator(inputs, targets)
+            # 2x [batch, height, width, channels] => [batch, 2k]
+            real_outputs = create_discriminator(inputs, targets)
+	    real_outputs = tf.Print(real_outputs, [real_outputs, real_outputs.get_shape()], message='Real Output:',summarize=5)
 
     with tf.name_scope("fake_discriminator"):
         with tf.variable_scope("discriminator", reuse=True):
-            # 2x [batch, height, width, channels] => [batch, 30, 30, 1]
-            predict_fake = create_discriminator(inputs, outputs)
+            # 2x [batch, height, width, channels] => [batch, 2k]
+            fake_outputs = create_discriminator(inputs, outputs)
+	    fake_outputs = tf.Print(fake_outputs, [fake_outputs, fake_outputs.get_shape()], message='Fake Output:',summarize=5)
 
     with tf.name_scope("discriminator_loss"):
         # minimizing -tf.log will try to get inputs to 1
         # predict_real => 1
         # predict_fake => 0
-        discrim_loss = tf.reduce_mean(-(tf.log(predict_real + EPS) + tf.log(1 - predict_fake + EPS)))
+        #discrim_loss = tf.reduce_mean(-(tf.log(predict_real + EPS) + tf.log(1 - predict_fake + EPS)))
+	real_softmax = tf.nn.softmax(real_outputs, dim=-1)	
+	fake_softmax = tf.nn.softmax(fake_outputs, dim=-1)
+	real_softmax = tf.Print(real_softmax, [real_softmax, real_softmax.get_shape()], message='Softmax real:',summarize=5)
+	fake_softmax = tf.Print(fake_softmax, [fake_softmax, fake_softmax.get_shape()], message='Softmax fake:',summarize=5)
+	predict_real = tf.reduce_sum(real_softmax[:, :NUM_CLASSES], axis=1)
+	predict_fake = tf.reduce_sum(fake_softmax[:, NUM_CLASSES:], axis=1)
+	predict_real = tf.Print(predict_real, [predict_real, predict_real.get_shape()], message='Predict real:',summarize=5)
+	predict_fake = tf.Print(predict_fake, [predict_fake, predict_fake.get_shape()], message='Predict fake:', summarize=5)
+	discrim_loss = tf.reduce_sum(-(tf.log(predict_real + EPS) + tf.log(predict_fake + EPS)))
 
     with tf.name_scope("generator_loss"):
         # predict_fake => 1
@@ -692,11 +711,11 @@ def main():
     with tf.name_scope("outputs_summary"):
         tf.summary.image("outputs", converted_outputs)
 
-    with tf.name_scope("predict_real_summary"):
-        tf.summary.image("predict_real", tf.image.convert_image_dtype(model.predict_real, dtype=tf.uint8))
+    #with tf.name_scope("predict_real_summary"):
+    #    tf.summary.image("predict_real", tf.image.convert_image_dtype(model.predict_real, dtype=tf.uint8))
 
-    with tf.name_scope("predict_fake_summary"):
-        tf.summary.image("predict_fake", tf.image.convert_image_dtype(model.predict_fake, dtype=tf.uint8))
+    #with tf.name_scope("predict_fake_summary"):
+    #    tf.summary.image("predict_fake", tf.image.convert_image_dtype(model.predict_fake, dtype=tf.uint8))
 
     tf.summary.scalar("discriminator_loss", model.discrim_loss)
     tf.summary.scalar("generator_loss_GAN", model.gen_loss_GAN)
