@@ -1,0 +1,11 @@
+In tools directory:
+
+-combine.py
+	Creates input data by putting sketches and photos side by side in a single png
+
+-move.py
+	Moves images from images folder into batch directories
+
+-collage.py
+	Takes images from a batch and puts them into one png
+	Makes three files for input, output, and target images
