@@ -1,3 +1,7 @@
+To Run:
+    python pix2pix.py --mode train --output_dir get_classes --max_steps 400
+    --input_dir /a/data/grp1/sketch_photo_pairs/test --which_direction AtoB
+
 In tools directory:
 
 -combine.py

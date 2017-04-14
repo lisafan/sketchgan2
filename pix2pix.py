@@ -49,9 +49,9 @@ a = parser.parse_args()
 
 EPS = 1e-12
 CROP_SIZE = 256
-NUM_CLASSES = 100
+NUM_CLASSES = 125
 
-Examples = collections.namedtuple("Examples", "paths, inputs, targets, count, steps_per_epoch")
+Examples = collections.namedtuple("Examples", "paths, inputs, targets, classes, count, steps_per_epoch")
 Model = collections.namedtuple("Model", "outputs, predict_real, predict_fake, discrim_loss, discrim_grads_and_vars, gen_loss_GAN, gen_loss_L1, gen_grads_and_vars, train")
 
 
@@ -235,7 +235,6 @@ def lab_to_rgb(lab):
 
         return tf.reshape(srgb_pixels, tf.shape(lab))
 
-
 def load_examples():
     if a.input_dir is None or not os.path.exists(a.input_dir):
         raise Exception("input_dir does not exist")
@@ -261,13 +260,19 @@ def load_examples():
         input_paths = sorted(input_paths)
 
     with tf.name_scope("load_images"):
-        path_queue = tf.train.string_input_producer(input_paths, shuffle=a.mode == "train")
+	path_queue = tf.train.string_input_producer(input_paths, shuffle=a.mode == "train")
         reader = tf.WholeFileReader()
         paths, contents = reader.read(path_queue)
-        raw_input = decode(contents)
+	#paths = tf.Print(paths, [paths], message="paths:")
+	raw_input = decode(contents)
         raw_input = tf.image.convert_image_dtype(raw_input, dtype=tf.float32)
+	img_path = tf.string_split([paths], delimiter='/').values[-1]
+	classes = tf.string_to_number(tf.string_split([img_path], delimiter='_').values[0], out_type=tf.int32)
+	# NOTE: may want to use one hots instead of numbers
+	#classes = tf.one_hot(classes, NUM_CLASSES) # or NUM_CLASSES*2 if we want the full real/fake one hot
+	#classes = tf.Print(classes, [img_path,classes], message="one hot", summarize=NUM_CLASSES)	
 
-        assertion = tf.assert_equal(tf.shape(raw_input)[2], 3, message="image does not have 3 channels")
+	assertion = tf.assert_equal(tf.shape(raw_input)[2], 3, message="image does not have 3 channels")
         with tf.control_dependencies([assertion]):
             raw_input = tf.identity(raw_input)
 
@@ -285,6 +290,7 @@ def load_examples():
             a_images = preprocess(raw_input[:,:width//2,:])
             b_images = preprocess(raw_input[:,width//2:,:])
 
+    #print(raw_input.shape, len(classes))
     if a.which_direction == "AtoB":
         inputs, targets = [a_images, b_images]
     elif a.which_direction == "BtoA":
@@ -317,13 +323,14 @@ def load_examples():
     with tf.name_scope("target_images"):
         target_images = transform(targets)
 
-    paths_batch, inputs_batch, targets_batch = tf.train.batch([paths, input_images, target_images], batch_size=a.batch_size)
+    paths_batch, inputs_batch, targets_batch, classes_batch = tf.train.batch([paths, input_images, target_images, classes], batch_size=a.batch_size)
     steps_per_epoch = int(math.ceil(len(input_paths) / a.batch_size))
 
     return Examples(
         paths=paths_batch,
         inputs=inputs_batch,
         targets=targets_batch,
+	classes=classes_batch,
         count=len(input_paths),
         steps_per_epoch=steps_per_epoch,
     )
@@ -397,7 +404,7 @@ def create_generator(generator_inputs, generator_outputs_channels):
     return layers[-1]
 
 
-def create_model(inputs, targets):
+def create_model(inputs, targets, classes):
     def create_discriminator(discrim_inputs, discrim_targets):
         n_layers = 3
         layers = []
@@ -448,13 +455,13 @@ def create_model(inputs, targets):
         with tf.variable_scope("discriminator"):
             # 2x [batch, height, width, channels] => [batch, 2k]
             real_outputs = create_discriminator(inputs, targets)
-	    real_outputs = tf.Print(real_outputs, [real_outputs, real_outputs.get_shape()], message='Real Output:',summarize=5)
+	    #real_outputs = tf.Print(real_outputs, [real_outputs, real_outputs.get_shape()], message='Real Output:',summarize=5)
 
     with tf.name_scope("fake_discriminator"):
         with tf.variable_scope("discriminator", reuse=True):
             # 2x [batch, height, width, channels] => [batch, 2k]
             fake_outputs = create_discriminator(inputs, outputs)
-	    fake_outputs = tf.Print(fake_outputs, [fake_outputs, fake_outputs.get_shape()], message='Fake Output:',summarize=5)
+	    #fake_outputs = tf.Print(fake_outputs, [fake_outputs, fake_outputs.get_shape()], message='Fake Output:',summarize=5)
 
     with tf.name_scope("discriminator_loss"):
         # minimizing -tf.log will try to get inputs to 1
@@ -463,12 +470,12 @@ def create_model(inputs, targets):
         #discrim_loss = tf.reduce_mean(-(tf.log(predict_real + EPS) + tf.log(1 - predict_fake + EPS)))
 	real_softmax = tf.nn.softmax(real_outputs, dim=-1)	
 	fake_softmax = tf.nn.softmax(fake_outputs, dim=-1)
-	real_softmax = tf.Print(real_softmax, [real_softmax, real_softmax.get_shape()], message='Softmax real:',summarize=5)
-	fake_softmax = tf.Print(fake_softmax, [fake_softmax, fake_softmax.get_shape()], message='Softmax fake:',summarize=5)
+	#real_softmax = tf.Print(real_softmax, [real_softmax, real_softmax.get_shape()], message='Softmax real:',summarize=5)
+	#fake_softmax = tf.Print(fake_softmax, [fake_softmax, fake_softmax.get_shape()], message='Softmax fake:',summarize=5)
 	predict_real = tf.reduce_sum(real_softmax[:, :NUM_CLASSES], axis=1)
 	predict_fake = tf.reduce_sum(fake_softmax[:, NUM_CLASSES:], axis=1)
-	predict_real = tf.Print(predict_real, [predict_real, predict_real.get_shape()], message='Predict real:',summarize=5)
-	predict_fake = tf.Print(predict_fake, [predict_fake, predict_fake.get_shape()], message='Predict fake:', summarize=5)
+	#predict_real = tf.Print(predict_real, [predict_real, predict_real.get_shape()], message='Predict real:',summarize=5)
+	#predict_fake = tf.Print(predict_fake, [predict_fake, predict_fake.get_shape()], message='Predict fake:', summarize=5)
 	discrim_loss = tf.reduce_sum(-(tf.log(predict_real + EPS) + tf.log(predict_fake + EPS)))
 
     with tf.name_scope("generator_loss"):
@@ -520,7 +527,7 @@ def save_images(fetches, step=None):
         name, _ = os.path.splitext(os.path.basename(in_path.decode("utf8")))
         fileset = {"name": name, "step": step}
         for kind in ["inputs", "outputs", "targets"]:
-            filename = name + "-" + kind + ".png"
+            filename = name + "-" + kind + "_" +".png"
             if step is not None:
                 filename = "%08d-%s" % (step, filename)
             fileset[kind] = filename
@@ -651,7 +658,7 @@ def main():
     print("examples count = %d" % examples.count)
 
     # inputs and targets are [batch_size, height, width, channels]
-    model = create_model(examples.inputs, examples.targets)
+    model = create_model(examples.inputs, examples.targets, examples.classes)
 
     # undo colorization splitting on images that we use for display/output
     if a.lab_colorization:
@@ -699,7 +706,8 @@ def main():
             "inputs": tf.map_fn(tf.image.encode_png, converted_inputs, dtype=tf.string, name="input_pngs"),
             "targets": tf.map_fn(tf.image.encode_png, converted_targets, dtype=tf.string, name="target_pngs"),
             "outputs": tf.map_fn(tf.image.encode_png, converted_outputs, dtype=tf.string, name="output_pngs"),
-        }
+            "classes": examples.classes
+	}
 
     # summaries
     with tf.name_scope("inputs_summary"):
