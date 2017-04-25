@@ -468,29 +468,20 @@ def create_model(inputs, targets, classes_real, classes_fake):
 	    #fake_outputs = tf.Print(fake_outputs, [fake_outputs, fake_outputs.get_shape()], message='Fake Output:',summarize=5)
 
     with tf.name_scope("discriminator_loss"):
-        # minimizing -tf.log will try to get inputs to 1
-        # predict_real => 1
-        # predict_fake => 0
         #discrim_loss = tf.reduce_mean(-(tf.log(predict_real + EPS) + tf.log(1 - predict_fake + EPS)))
-	real_softmax = tf.nn.softmax(real_outputs, dim=-1)	
-	fake_softmax = tf.nn.softmax(fake_outputs, dim=-1)
-	#real_softmax = tf.Print(real_softmax, [real_softmax, real_softmax.get_shape()], message='Softmax real:',summarize=5)
-	#fake_softmax = tf.Print(fake_softmax, [fake_softmax, fake_softmax.get_shape()], message='Softmax fake:',summarize=5)
-	predict_real = tf.reduce_sum(real_softmax[:, :NUM_CLASSES], axis=1)
-	predict_fake = tf.reduce_sum(fake_softmax[:, NUM_CLASSES:], axis=1)
-	#predict_real = tf.Print(predict_real, [predict_real, predict_real.get_shape()], message='Predict real:',summarize=5)
-	#predict_fake = tf.Print(predict_fake, [predict_fake, predict_fake.get_shape()], message='Predict fake:', summarize=5)
-	discrim_unsupervised_loss = tf.reduce_sum(-(tf.log(predict_real + EPS) + tf.log(predict_fake + EPS)))
-	discrim_real_supervised_loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=classes_real, logits=real_outputs))
-	discrim_fake_supervised_loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=classes_real, logits=real_outputs))
-	discrim_loss = tf.add_n([discrim_unsupervised_loss, discrim_real_supervised_loss, discrim_fake_supervised_loss])
+        real_softmax = tf.nn.softmax(real_outputs, dim=-1)	
+        fake_softmax = tf.nn.softmax(fake_outputs, dim=-1)
+        predict_real = tf.reduce_sum(real_softmax[:, :NUM_CLASSES], axis=1)
+        predict_fake = tf.reduce_sum(fake_softmax[:, NUM_CLASSES:], axis=1)
+        discrim_unsupervised_loss = tf.reduce_sum(-(tf.log(predict_real + EPS) + tf.log(predict_fake + EPS)))
+        discrim_real_supervised_loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=classes_real, logits=real_outputs))
+        discrim_fake_supervised_loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=classes_fake, logits=fake_outputs))
+        discrim_loss = tf.add_n([discrim_unsupervised_loss, discrim_real_supervised_loss, discrim_fake_supervised_loss])
 
     with tf.name_scope("generator_loss"):
-        # predict_fake => 1
         # abs(targets - outputs) => 0
-        #gen_loss_GAN = tf.reduce_mean(-tf.log(predict_fake + EPS))
-	# ^ incorrest based on our redefinition of predict_fake as the prob that fake images are classified as fake
-        gen_loss_GAN = tf.reduce_mean(-tf.log(1 - predict_fake + EPS))
+        gen_supervised_loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=classes_real, logits=fake_outputs))
+        gen_loss_GAN = tf.reduce_sum(-tf.log(1 - predict_fake + EPS)) + gen_supervised_loss
         gen_loss_L1 = tf.reduce_mean(tf.abs(targets - outputs))
         gen_loss = gen_loss_GAN * a.gan_weight + gen_loss_L1 * a.l1_weight
 
@@ -536,7 +527,7 @@ def save_images(fetches, step=None):
         name, _ = os.path.splitext(os.path.basename(in_path.decode("utf8")))
         fileset = {"name": name, "step": step}
         for kind in ["inputs", "outputs", "targets"]:
-            filename = name + "-" + kind + "_" +".png"
+            filename = name + "-" + kind +".png"
             if step is not None:
                 filename = "%08d-%s" % (step, filename)
             fileset[kind] = filename
@@ -544,6 +535,7 @@ def save_images(fetches, step=None):
             contents = fetches[kind][i]
             with open(out_path, "wb") as f:
                 f.write(contents)
+	    os.chmod(out_path, 0771)
         filesets.append(fileset)
     return filesets
 
