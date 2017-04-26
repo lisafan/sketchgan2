@@ -1,6 +1,6 @@
 To Run:
-    python pix2pix.py --mode train --output_dir get_classes --max_steps 400
-    --input_dir /a/data/grp1/sketch_photo_pairs/test --which_direction AtoB
+
+    python pix2pix_.py --mode train --output_dir /a/data/grp1/two_n_ --max_epochs 100 --input_dir /a/data/grp1/sketch_photo_pairs/train/ --which_direction AtoB --save_freq 1000 --display_freq 500
 
 In tools directory:
 
@@ -13,3 +13,13 @@ In tools directory:
 -collage.py
 	Takes images from a batch and puts them into one png
 	Makes three files for input, output, and target images
+
+POTENTIAL EXPERIMENTS:
+	1. N+1 loss (baseline)
+	2. Inception scoring
+	3. Combine classes in loss for 2N
+	4. Remove real/fake in loss for penalties
+	5. Preprocess original photos with image segmentation
+
+
+

@@ -340,7 +340,7 @@ def load_examples():
     )
 
 
-def create_generator(generator_inputs, generator_outputs_channels):
+def create_generator(generator_inputs, classes, generator_outputs_channels):
     layers = []
 
     # encoder_1: [batch, 256, 256, in_channels] => [batch, 128, 128, ngf]
@@ -366,6 +366,7 @@ def create_generator(generator_inputs, generator_outputs_channels):
             output = batchnorm(convolved)
             layers.append(output)
 
+    # NOTE decoder 8 layer has diff number of filters, backprop? 
     layer_specs = [
         (a.ngf * 8, 0.5),   # decoder_8: [batch, 1, 1, ngf * 8] => [batch, 2, 2, ngf * 8 * 2]
         (a.ngf * 8, 0.5),   # decoder_7: [batch, 2, 2, ngf * 8 * 2] => [batch, 4, 4, ngf * 8 * 2]
@@ -383,7 +384,8 @@ def create_generator(generator_inputs, generator_outputs_channels):
             if decoder_layer == 0:
                 # first decoder layer doesn't have skip connections
                 # since it is directly connected to the skip_layer
-                input = layers[-1]
+                classes_one_hot = tf.expand_dims(tf.expand_dims(tf.one_hot(classes, NUM_CLASSES), 1), 1)
+                input = tf.concat([layers[-1], classes_one_hot], axis=3)
             else:
                 input = tf.concat([layers[-1], layers[skip_layer]], axis=3)
 
@@ -451,7 +453,7 @@ def create_model(inputs, targets, classes_real, classes_fake):
 
     with tf.variable_scope("generator") as scope:
         out_channels = int(targets.get_shape()[-1])
-        outputs = create_generator(inputs, out_channels)
+        outputs = create_generator(inputs, classes_real, out_channels)
 
     # create two copies of discriminator, one for real pairs and one for fake pairs
     # they share the same underlying variables

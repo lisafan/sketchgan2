@@ -42,6 +42,7 @@ parser.add_argument("--lr", type=float, default=0.0002, help="initial learning r
 parser.add_argument("--beta1", type=float, default=0.5, help="momentum term of adam")
 parser.add_argument("--l1_weight", type=float, default=100.0, help="weight on L1 term for generator gradient")
 parser.add_argument("--gan_weight", type=float, default=1.0, help="weight on GAN term for generator gradient")
+parser.add_argument("--penalties", type=float, nargs=4, default=[1.0, 2.0, 3.0, 4.0], help="error penalties for loss")
 
 # export options
 parser.add_argument("--output_filetype", default="png", choices=["png", "jpeg"])
@@ -467,21 +468,17 @@ def create_model(inputs, targets, classes_real, classes_fake):
             fake_outputs = create_discriminator(inputs, outputs)
 	    #fake_outputs = tf.Print(fake_outputs, [fake_outputs, fake_outputs.get_shape()], message='Fake Output:',summarize=5)
 
-    # need 3 categories:
-    # A 1. C&C, has correct trailing / leading zeros and class
-    # B 2. C&F, has incorrect trailing / leading zeros and correct class
-    # C 3. F&F, has inccorect ........................ and incorrect ...
-    # A < B < C
-
     with tf.name_scope("discriminator_loss"):
         shape = classes_real.get_shape().dims
-        real_penalty = tf.constant(1, shape=shape)
-        fake_penalty = tf.constant(1, shape=shape)
+        real_penalty = tf.constant(a.penalties[0], shape=shape)
+        fake_penalty = tf.constant(a.penalties[0], shape=shape)
         num_classes_const = tf.constant(NUM_CLASSES, shape=shape)
-        A_const = tf.constant(2, shape=shape) 
-        B_const = tf.constant(3, shape=shape) 
-        C_const = tf.constant(4, shape=shape)
-        classes_real_64 = classes_real
+        # A , F&C, has incorrect trailing / leading zeros and correct class
+        # B , C&F, has correct trailing / leading zeros and incorrect class
+        # C , F&F, has inccorect trailing / leading zeros and incorrect class 
+        A_const = tf.constant(a.penalties[1], shape=shape) 
+        B_const = tf.constant(a.penalties[2], shape=shape) 
+        C_const = tf.constant(a.penalties[3], shape=shape)
     
         # predictions
         real_softmax = tf.nn.softmax(real_outputs, dim=-1)	
@@ -494,8 +491,8 @@ def create_model(inputs, targets, classes_real, classes_fake):
         fake_binary = tf.less(fake_class_pred, num_classes_const)
 
         # determine if class prediction was correct
-        real_class_binary = tf.not_equal(tf.mod(real_class_pred, num_classes_const), classes_real_64)
-        fake_class_binary = tf.not_equal(tf.mod(fake_class_pred, num_classes_const), classes_real_64)
+        real_class_binary = tf.not_equal(tf.mod(real_class_pred, num_classes_const), classes_real)
+        fake_class_binary = tf.not_equal(tf.mod(fake_class_pred, num_classes_const), classes_real)
 
         # get wrong wrong instances
         real_ = tf.logical_and(real_binary, real_class_binary)
@@ -518,14 +515,14 @@ def create_model(inputs, targets, classes_real, classes_fake):
         discrim_unsupervised_loss = tf.reduce_sum(-(tf.log(predict_real + EPS) + tf.log(predict_fake + EPS)))
         real_cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=classes_real, logits=real_outputs)
         fake_cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=classes_fake, logits=fake_outputs)
-
         discrim_real_supervised_loss = tf.reduce_sum(tf.multiply(real_cross_entropy, real_penalty))
         discrim_fake_supervised_loss = tf.reduce_sum(tf.multiply(fake_cross_entropy, fake_penalty))
         discrim_loss = tf.add_n([discrim_unsupervised_loss, discrim_real_supervised_loss, discrim_fake_supervised_loss])
 
     with tf.name_scope("generator_loss"):
         # abs(targets - outputs) => 0
-        gen_loss_GAN = tf.reduce_sum(-tf.log(1 - predict_fake + EPS))
+        gen_supervised_loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=classes_real, logits=fake_outputs))
+        gen_loss_GAN = tf.reduce_sum(-tf.log(1 - predict_fake + EPS)) + gen_supervised_loss
         gen_loss_L1 = tf.reduce_mean(tf.abs(targets - outputs))
         gen_loss = gen_loss_GAN * a.gan_weight + gen_loss_L1 * a.l1_weight
 
