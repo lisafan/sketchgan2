@@ -14,12 +14,84 @@ In tools directory:
 	Takes images from a batch and puts them into one png
 	Makes three files for input, output, and target images
 
-POTENTIAL EXPERIMENTS:
-	1. N+1 loss (baseline)
-	2. Inception scoring
-	3. Combine classes in loss for 2N
-	4. Remove real/fake in loss for penalties
-	5. Preprocess original photos with image segmentation
+Models:
 
+- pix2pix_2n.py
+    Discrim loss: real/fake cross entropy + class cross entropy
+    Generator loss: fake cross entropy + class cross entropy
+    Treats both sides of 2n vector as n classes, disregards real/fake
+
+- pix2pix_penalty2.py
+    Discrim loss: (2N real cross entropy + 2N fake cross entropy) * penalties
+    Generator loss: 2N fake cross entropy * penalties + L1 distance
+    No unsupervised loss
+
+    
+
+POTENTIAL EXPERIMENTS:
+     X  1. N+1 loss (baseline)  (pix2pix_nplus1.py)
+        2. Inception scoring
+     X  3. Combine classes in loss for 2N (pix2pix_2n.py)
+		-Discrim loss: real/fake cross entropy + class cross entropy
+		-Generator loss: fake cross entropy + class cross entropy
+     X  4. Remove real/fake in loss for penalties (pix2pix_penalty2.py)
+		-Discrim loss: (2N real cross entropy + 2N fake cross entropy) * penalties
+		-Generator loss: 2N fake cross entropy * penalties + L1 distance
+        5. Preprocess original photos with image segmentation  [Sam]
+     X  6. Make penalty mask a function
+     X  7. Add class condition to generator with just real/fake discriminator (pix2pix_cond_n.py)
+
+** pix2pix_cond_n.py and pix2pix_2n.py and pix2pix_penalty2.py are untested but should be ready to run as soon as a gpu opens up
+** pix2pix_penalty2.py has a separate function for getting the penalty mask, should copy over to pix2pix_penalty.py once tested
+** N+1 also done but not tested
+
+Paper:
+    file_name, data_directory
+
+    ======== Base Line =========
+    1. (on gh?), sketches_train_2: out of the box version (seems to generate the
+      best images). discrim: real / fake, gen: real / fake
+
+    ======== Improved Techniques GANs (N+1)  ======
+    2. pix2pix_nplus1.py, nplus1: baseline model
+    TODO: fix the generater loss to match the paper
+
+    ======== 2n output layer =======
+    3a. pix2pix_2n.py, 2n: discrim - class loss cross entropy and real fake
+      generator - class loss and real fake 
+
+    XXX3b. two_n2: discrim: real fake + 2n, gen: real fake 
+
+    3c. pix2pix_2n2n.py, 2n2n: discrim: 2n, 2n
+    (Running on GPU1)
+    
+    3d. two_n3: discrim: real fake + 2n, gen: real fake + 2n
+
+    ======== Conditional pix2pix =====
+    4a. pix2pix_cond_n.py, cond_n: basline discriminator with class conditional
+    generator (TODO: if this is better than Base Line add it to 2N below)
+    (Running on GPU8)
+
+    4b. pix2pix_cond.py, two_n_cond: conditional generator, has real fake loss and
+       2n loss. TODO: get rid of real fake loss
+
+    ======== Penalty =======
+    5a. pix2pix_penalty2.py, pen2: 2n loss (no real fake) and penalty
+
+    XXX5b. pix2pix_penalty.py, two_n_pen: 2n loss with penalty and real fake loss
+
+    - two_n: ??? 
+
+    ======== Super Model =====
+
+    6. TODO: take best of penalty (yes no) and conditional (yes no)
+
+    ======= Pre-Processing: Segmentation Mask =======
+
+    7. TODO: runn on Baseline, N+1, and Super Model
+
+    ========= Evaluation =======
+
+    8. TODO: inception score + qualitative + semi-supervised classification accuracy
 
 
