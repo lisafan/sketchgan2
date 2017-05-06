@@ -52,7 +52,7 @@ CROP_SIZE = 256
 NUM_CLASSES = 125
 
 Examples = collections.namedtuple("Examples", "paths, inputs, targets, classes_real, classes_fake, count, steps_per_epoch")
-Model = collections.namedtuple("Model", "outputs, discrim_loss, discrim_grads_and_vars, gen_loss_GAN, gen_loss_L1, gen_grads_and_vars, train")
+Model = collections.namedtuple("Model", "outputs, predict_real, predict_fake, discrim_loss, discrim_grads_and_vars, gen_loss_GAN, gen_loss_L1, gen_grads_and_vars, train")
 
 
 def preprocess(image):
@@ -441,13 +441,13 @@ def create_model(inputs, targets, classes_real, classes_fake):
             #layers.append(output)
             layers.append(convolved)
 
-	# layer 6: [batch, 30, 30, 1] => [batch, k+1]
+	# layer 6: [batch, 30, 30, 1] => [batch, 2k]
 	with tf.variable_scope("layer_%d" % (len(layers) + 1)):
 	    conv_flat = tf.reshape(layers[-1], [-1, 30*30*1])
-	    fully_connected = tf.layers.dense(conv_flat, units=(1 + NUM_CLASSES))
+	    fully_connected = tf.layers.dense(conv_flat, units=(2 * NUM_CLASSES))
 	    layers.append(fully_connected)
 
-        return layers#layers[-1]
+        return layers[-1]
 
     with tf.variable_scope("generator") as scope:
         out_channels = int(targets.get_shape()[-1])
@@ -457,32 +457,28 @@ def create_model(inputs, targets, classes_real, classes_fake):
     # they share the same underlying variables
     with tf.name_scope("real_discriminator"):
         with tf.variable_scope("discriminator"):
-            # 2x [batch, height, width, channels] => [batch, k+1]
-            real_layers = create_discriminator(inputs, targets)
-            real_outputs = real_layers[-1]
+            # 2x [batch, height, width, channels] => [batch, 2k]
+            real_outputs = create_discriminator(inputs, targets)
 	    #real_outputs = tf.Print(real_outputs, [real_outputs, real_outputs.get_shape()], message='Real Output:',summarize=5)
 
     with tf.name_scope("fake_discriminator"):
         with tf.variable_scope("discriminator", reuse=True):
-            # 2x [batch, height, width, channels] => [batch, k+1]
-            fake_layers = create_discriminator(inputs, outputs)
-            fake_outputs = fake_layers[-1]
+            # 2x [batch, height, width, channels] => [batch, 2k]
+            fake_outputs = create_discriminator(inputs, outputs)
 	    #fake_outputs = tf.Print(fake_outputs, [fake_outputs, fake_outputs.get_shape()], message='Fake Output:',summarize=5)
 
     with tf.name_scope("discriminator_loss"):
         real_softmax = tf.nn.softmax(real_outputs, dim=-1)	
         fake_softmax = tf.nn.softmax(fake_outputs, dim=-1)
-
-        discrim_supervised_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=classes_real, logits=real_outputs))
-        discrim_fake_unsupervised_loss = tf.reduce_mean(-tf.log(fake_softmax[:,-1]), axis=0)
-        discrim_real_unsupervised_loss = tf.reduce_mean(-tf.log(1 - real_softmax[:,-1]), axis=0)
-        discrim_loss = tf.add_n([discrim_supervised_loss, discrim_real_unsupervised_loss, discrim_fake_unsupervised_loss])
+        predict_real = tf.reduce_sum(real_softmax[:, :NUM_CLASSES], axis=1)
+        predict_fake = tf.reduce_sum(fake_softmax[:, NUM_CLASSES:], axis=1)
+        discrim_real_supervised_loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=classes_real, logits=real_outputs))
+        discrim_fake_supervised_loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=classes_fake, logits=fake_outputs))
+        discrim_loss = tf.add_n([discrim_real_supervised_loss, discrim_fake_supervised_loss])
 
     with tf.name_scope("generator_loss"):
         # abs(targets - outputs) => 0
-        moments_fake = tf.reduce_mean(fake_layers[-2], axis=0)
-        moments_real = tf.reduce_mean(real_layers[-2], axis=0)
-        gen_loss_GAN = tf.reduce_mean(tf.square(moments_fake - moments_real)) 
+        gen_loss_GAN = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=classes_real, logits=fake_outputs))
         gen_loss_L1 = tf.reduce_mean(tf.abs(targets - outputs))
         gen_loss = gen_loss_GAN * a.gan_weight + gen_loss_L1 * a.l1_weight
 
@@ -506,6 +502,8 @@ def create_model(inputs, targets, classes_real, classes_fake):
     incr_global_step = tf.assign(global_step, global_step+1)
 
     return Model(
+        predict_real=predict_real,
+        predict_fake=predict_fake,
         discrim_loss=ema.average(discrim_loss),
         discrim_grads_and_vars=discrim_grads_and_vars,
         gen_loss_GAN=ema.average(gen_loss_GAN),

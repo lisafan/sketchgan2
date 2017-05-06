@@ -42,6 +42,7 @@ parser.add_argument("--lr", type=float, default=0.0002, help="initial learning r
 parser.add_argument("--beta1", type=float, default=0.5, help="momentum term of adam")
 parser.add_argument("--l1_weight", type=float, default=100.0, help="weight on L1 term for generator gradient")
 parser.add_argument("--gan_weight", type=float, default=1.0, help="weight on GAN term for generator gradient")
+parser.add_argument("--penalties", type=float, nargs=4, default=[1.0, 2.0, 3.0, 4.0], help="error penalties for loss")
 
 # export options
 parser.add_argument("--output_filetype", default="png", choices=["png", "jpeg"])
@@ -339,6 +340,39 @@ def load_examples():
         steps_per_epoch=steps_per_epoch,
     )
 
+def create_penalties(targets, outputs):
+    shape = targets.get_shape().dims
+    penalty = tf.constant(a.penalties[0], shape=shape)
+    num_classes_const = tf.constant(NUM_CLASSES, shape=shape)
+
+    # A , F&C, has incorrect trailing / leading zeros and correct class
+    # B , C&F, has correct trailing / leading zeros and incorrect class
+    # C , F&F, has inccorect trailing / leading zeros and incorrect class 
+    A_const = tf.constant(a.penalties[1], shape=shape) 
+    B_const = tf.constant(a.penalties[2], shape=shape) 
+    C_const = tf.constant(a.penalties[3], shape=shape)
+
+    # predictions
+    softmax = tf.nn.softmax(outputs, dim=-1)
+    class_pred = tf.cast(tf.argmax(softmax, axis=1), tf.int32)
+
+    # determine if real / fake prediction was correct (1->wrong 0->right)
+    tf_binary = tf.greater(class_pred, num_classes_const)
+
+    # determine if class prediction was correct (1->wrong 0->right)
+    ft_binary = tf.not_equal(tf.mod(class_pred, num_classes_const), targets)
+
+    # get wrong wrong instances
+    ff_binary = tf.logical_and(tf_binary, ft_binary)
+
+    # penalty calc
+    penalty = tf.where(tf_binary, A_const, penalty)
+    penalty = tf.where(ft_binary, B_const, penalty)
+    penalty = tf.where(ff_binary, C_const, penalty)
+    
+    penalty = tf.cast(penalty, tf.float32)
+
+    return penalty
 
 def create_generator(generator_inputs, generator_outputs_channels):
     layers = []
@@ -441,13 +475,13 @@ def create_model(inputs, targets, classes_real, classes_fake):
             #layers.append(output)
             layers.append(convolved)
 
-	# layer 6: [batch, 30, 30, 1] => [batch, k+1]
+	# layer 6: [batch, 30, 30, 1] => [batch, 2k]
 	with tf.variable_scope("layer_%d" % (len(layers) + 1)):
 	    conv_flat = tf.reshape(layers[-1], [-1, 30*30*1])
-	    fully_connected = tf.layers.dense(conv_flat, units=(1 + NUM_CLASSES))
+	    fully_connected = tf.layers.dense(conv_flat, units=(2 * NUM_CLASSES))
 	    layers.append(fully_connected)
 
-        return layers#layers[-1]
+        return layers[-1]
 
     with tf.variable_scope("generator") as scope:
         out_channels = int(targets.get_shape()[-1])
@@ -457,32 +491,32 @@ def create_model(inputs, targets, classes_real, classes_fake):
     # they share the same underlying variables
     with tf.name_scope("real_discriminator"):
         with tf.variable_scope("discriminator"):
-            # 2x [batch, height, width, channels] => [batch, k+1]
-            real_layers = create_discriminator(inputs, targets)
-            real_outputs = real_layers[-1]
+            # 2x [batch, height, width, channels] => [batch, 2k]
+            real_outputs = create_discriminator(inputs, targets)
 	    #real_outputs = tf.Print(real_outputs, [real_outputs, real_outputs.get_shape()], message='Real Output:',summarize=5)
 
     with tf.name_scope("fake_discriminator"):
         with tf.variable_scope("discriminator", reuse=True):
-            # 2x [batch, height, width, channels] => [batch, k+1]
-            fake_layers = create_discriminator(inputs, outputs)
-            fake_outputs = fake_layers[-1]
+            # 2x [batch, height, width, channels] => [batch, 2k]
+            fake_outputs = create_discriminator(inputs, outputs)
 	    #fake_outputs = tf.Print(fake_outputs, [fake_outputs, fake_outputs.get_shape()], message='Fake Output:',summarize=5)
 
     with tf.name_scope("discriminator_loss"):
-        real_softmax = tf.nn.softmax(real_outputs, dim=-1)	
-        fake_softmax = tf.nn.softmax(fake_outputs, dim=-1)
+        real_penalty = create_penalties(classes_real, real_outputs)
+        fake_penalty = create_penalties(classes_fake, fake_outputs)
 
-        discrim_supervised_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=classes_real, logits=real_outputs))
-        discrim_fake_unsupervised_loss = tf.reduce_mean(-tf.log(fake_softmax[:,-1]), axis=0)
-        discrim_real_unsupervised_loss = tf.reduce_mean(-tf.log(1 - real_softmax[:,-1]), axis=0)
-        discrim_loss = tf.add_n([discrim_supervised_loss, discrim_real_unsupervised_loss, discrim_fake_unsupervised_loss])
+        # calculate loss
+        real_cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=classes_real, logits=real_outputs)
+        fake_cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=classes_fake, logits=fake_outputs)
+        discrim_real_supervised_loss = tf.reduce_sum(tf.multiply(real_cross_entropy, real_penalty))
+        discrim_fake_supervised_loss = tf.reduce_sum(tf.multiply(fake_cross_entropy, fake_penalty))
+        discrim_loss = tf.add_n([discrim_real_supervised_loss, discrim_fake_supervised_loss])
 
     with tf.name_scope("generator_loss"):
         # abs(targets - outputs) => 0
-        moments_fake = tf.reduce_mean(fake_layers[-2], axis=0)
-        moments_real = tf.reduce_mean(real_layers[-2], axis=0)
-        gen_loss_GAN = tf.reduce_mean(tf.square(moments_fake - moments_real)) 
+        gen_penalty = create_penalties(classes_real, fake_outputs)
+        gen_cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=classes_real, logits=fake_outputs)
+        gen_loss_GAN = tf.reduce_sum(tf.multiply(gen_cross_entropy, gen_penalty))
         gen_loss_L1 = tf.reduce_mean(tf.abs(targets - outputs))
         gen_loss = gen_loss_GAN * a.gan_weight + gen_loss_L1 * a.l1_weight
 
