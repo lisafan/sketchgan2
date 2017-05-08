@@ -16,13 +16,14 @@ def main():
 
     images = []
     # turn images in subdirectories of input_dir into numpy arrs
-    for dirname in os.listdir(input_dir):
-        for filename in os.listdir(input_dir+'/'+dirname):
-            fn, ext = os.path.splitext(filename.lower())
+    for filename in os.listdir(input_dir):
+        #for filename in os.listdir(input_dir+'/'+dirname):
+        fn, ext = os.path.splitext(filename.lower())
         # remove endswith for real photos
-        if fn.endswith('output') and (ext == ".jpg" or ext == ".png"):
-            file_path = os.path.join(input_dir, dirname, filename)
+        if fn.endswith('outputs') and (ext == ".jpg" or ext == ".png"):
+            file_path = os.path.join(input_dir, filename)
             images.append(ndimage.imread(file_path))
+
 
     # Call this function with list of images. Each of elements should be a 
     # numpy array with values ranging from 0 to 255.

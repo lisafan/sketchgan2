@@ -509,7 +509,6 @@ def save_images(fetches, step=None):
             contents = fetches[kind][i]
             with open(out_path, "wb") as f:
                 f.write(contents)
-	    os.chmod(out_path, 0771)
         filesets.append(fileset)
     return filesets
 

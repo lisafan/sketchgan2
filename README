@@ -52,28 +52,27 @@ Paper:
     file_name, data_directory
 
     ======== Base Line =========
-    1. pix2pix_orig.py, sketches_train_2: out of the box version (seems to generate the
+    1. pix2pix_orig.py, orig: out of the box version (seems to generate the
       best images). discrim: real / fake, gen: real / fake
 
     ======== Improved Techniques GANs (N+1)  ======
     2. pix2pix_nplus1.py, nplus1: baseline model
-    TODO: fix the generater loss to match the paper
+    (Running on GPU 1)
 
     ======== 2n output layer =======
-    3a. pix2pix_rf_class.py, rf_class: discrim - class loss cross entropy and real fake
+    3a. pix2pix_rf_class.py, 2n: discrim - class loss cross entropy and real fake
       generator - class loss and real fake 
+      (Running on GPU 8)
 
     XXX3b. two_n2: discrim: real fake + 2n, gen: real fake 
 
     3c. pix2pix_2n2n.py, 2n2n: discrim: 2n, 2n
-    (Running on GPU1)
     
     3d. 2n_rf: discrim: real fake + 2n, gen: real fake + 2n
 
     ======== Conditional pix2pix =====
     4a. pix2pix_cond_n.py, cond_n: basline discriminator with class conditional
     generator (TODO: if this is better than Base Line add it to 2N below)
-    (Running on GPU8)
 
     4b. pix2pix_cond_nplus1.py, : conditional with nplus1 loss
 
@@ -100,5 +99,9 @@ Paper:
     8. TODO: inception score + qualitative + semi-supervised classification accuracy
     inception scores:
         1. real photos: ('scores mean:', 9.1729546, ' scores std:', 0.90772361)
+        2. baseline: ('scores mean:', 5.2578478, ' scores std:', 0.12857515)
+        NOTE: this is after 83k iterations
+
+
 
 

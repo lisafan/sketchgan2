@@ -482,8 +482,7 @@ def create_model(inputs, targets, classes_real, classes_fake):
         discrim_loss = tf.add_n([discrim_unsupervised_loss, discrim_real_supervised_loss, discrim_fake_supervised_loss])
 
     with tf.name_scope("generator_loss"):
-        # abs(targets - outputs) => 0
-	    predict_class = tf.add(fake_outputs[:, :NUM_CLASSES], fake_outputs[:, NUM_CLASSES:])
+        predict_class = tf.add(fake_outputs[:, :NUM_CLASSES], fake_outputs[:, NUM_CLASSES:])
         gen_supervised_loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=classes_real, logits=predict_class))
         gen_loss_GAN = tf.reduce_sum(-tf.log(1 - predict_fake + EPS)) + gen_supervised_loss
         gen_loss_L1 = tf.reduce_mean(tf.abs(targets - outputs))
