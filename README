@@ -54,6 +54,7 @@ Paper:
     ======== Base Line =========
     1. pix2pix_orig.py, orig: out of the box version (seems to generate the
       best images). discrim: real / fake, gen: real / fake
+      (Running on GPU 8)
 
     ======== Improved Techniques GANs (N+1)  ======
     2. pix2pix_nplus1.py, nplus1: baseline model
@@ -62,7 +63,6 @@ Paper:
     ======== 2n output layer =======
     3a. pix2pix_rf_class.py, 2n: discrim - class loss cross entropy and real fake
       generator - class loss and real fake 
-      (Running on GPU 8)
 
     XXX3b. two_n2: discrim: real fake + 2n, gen: real fake 
 

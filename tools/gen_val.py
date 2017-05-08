@@ -59,10 +59,15 @@ def get_generator_score(images, classes, cls_to_uid, splits=10):
     
     idx = np.argsort(preds, axis=0)
     top_5s = idx[:,-5:]
-    top_5s = [cls_to_uid[x] for x in top_5s]
+    print("SHAPE", top_5s.shape)
+    top_5s = np.array([[cls_to_uid[y] for y in x] for x in top_5s])
+    print("SHAPE", top_5s.shape)
     #top_5s = [uid_to_cls[x] for x in top_5s]
 
+    accuracy = 0.0
+    top_five = 0.0
     for c, t_5 in zip(classes, top_5s):
+	print(t_5[-1])
 	if c in t_5:
 		top_five += 1.0
 	if t_5[-1] == c:
@@ -109,7 +114,7 @@ def get_cls_to_uid():
                     # Remove the enclosing "" from the string.
                     uid = uid[1:-2]
                     # Insert into the lookup-dicts for both ways between uid and cls
-                    cls_to_uid[cls] = uid
+                    cls_to_uid[cls-1] = uid
   return cls_to_uid
 
 # This function is called automatically.
@@ -171,7 +176,10 @@ def main():
     i=0
     # turn images in subdirectories of input_dir into numpy arrs
     for dirname in os.listdir(input_dir):
+	if i==20:
+		break
 	for filename in os.listdir(input_dir+'/'+dirname):
+		print(dirname)
 		i += 1
 		if i == 20:
 			break
@@ -180,7 +188,10 @@ def main():
         	if ext == ".jpg" or ext == ".png":
 			#if fn.endswith('outputs') and (ext == ".jpg" or ext == ".png"):
             		file_path = os.path.join(input_dir, dirname,filename)
-            		images.append(ndimage.imread(file_path))
+  			if not tf.gfile.Exists(file_path):
+    				tf.logging.fatal('File does not exist %s', file_path)
+  				images.append(tf.gfile.FastGFile(image, 'rb').read())
+            		#images.append(ndimage.imread(file_path))
 	    		#classes.append(int(fn.split('_')[0]))
 			classes.append(fn.split('_')[0])
     print(classes)
