@@ -52,7 +52,7 @@ CROP_SIZE = 256
 NUM_CLASSES = 125
 
 Examples = collections.namedtuple("Examples", "paths, inputs, targets, classes_real, classes_fake, count, steps_per_epoch")
-Model = collections.namedtuple("Model", "real_class_preds, outputs, predict_real, predict_fake, discrim_loss, discrim_grads_and_vars, gen_loss_GAN, gen_loss_L1, gen_grads_and_vars, train")
+Model = collections.namedtuple("Model", "discrim_accuracy, outputs, predict_real, predict_fake, discrim_loss, discrim_grads_and_vars, gen_loss_GAN, gen_loss_L1, gen_grads_and_vars, train")
 
 
 def preprocess(image):
@@ -265,13 +265,13 @@ def load_examples():
         paths, contents = reader.read(path_queue)
 	#paths = tf.Print(paths, [paths], message="paths:")
 	raw_input = decode(contents)
-        raw_input = tf.image.convert_image_dtype(raw_input, dtype=tf.float32)
+    raw_input = tf.image.convert_image_dtype(raw_input, dtype=tf.float32)
 	img_path = tf.string_split([paths], delimiter='/').values[-1]
 	classes = tf.string_to_number(tf.string_split([img_path], delimiter='_').values[0], out_type=tf.int32)
 	# NOTE: may want to use one hots instead of numbers
 	#classes = tf.one_hot(classes, NUM_CLASSES) # or NUM_CLASSES*2 if we want the full real/fake one hot
 	#classes = tf.Print(classes, [img_path, classes], message="one hot", summarize=NUM_CLASSES)	
- 	shape = classes.get_shape().dims #f.shape(classes)
+ 	shape = classes.get_shape().dims 
 	classes_real = classes
 	classes_fake = tf.add(classes, tf.constant(NUM_CLASSES, shape=shape))
 
@@ -293,7 +293,6 @@ def load_examples():
             a_images = preprocess(raw_input[:,:width//2,:])
             b_images = preprocess(raw_input[:,width//2:,:])
 
-    #print(raw_input.shape, len(classes))
     if a.which_direction == "AtoB":
         inputs, targets = [a_images, b_images]
     elif a.which_direction == "BtoA":
@@ -333,8 +332,8 @@ def load_examples():
         paths=paths_batch,
         inputs=inputs_batch,
         targets=targets_batch,
-	classes_real=classes_real_batch,
-	classes_fake=classes_fake_batch,
+        classes_real=classes_real_batch,
+        classes_fake=classes_fake_batch,
         count=len(input_paths),
         steps_per_epoch=steps_per_epoch,
     )
@@ -470,12 +469,15 @@ def create_model(inputs, targets, classes_real, classes_fake):
     with tf.name_scope("discriminator_loss"):
         real_softmax = tf.nn.softmax(real_outputs, dim=-1)	
         fake_softmax = tf.nn.softmax(fake_outputs, dim=-1)
-        real_class_preds = tf.argmax(real_softmax, axis=1)
         predict_real = tf.reduce_sum(real_softmax[:, :NUM_CLASSES], axis=1)
         predict_fake = tf.reduce_sum(fake_softmax[:, NUM_CLASSES:], axis=1)
         discrim_real_supervised_loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=classes_real, logits=real_outputs))
         discrim_fake_supervised_loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=classes_fake, logits=fake_outputs))
         discrim_loss = tf.add_n([discrim_real_supervised_loss, discrim_fake_supervised_loss])
+
+        # NOTE: added for discrim
+        real_class_preds = tf.argmax(real_softmax, axis=1)
+        discrim_accuracy = tf.metrics.accuracy(labels=classes_real, predictions=real_class_preds)
 
     with tf.name_scope("generator_loss"):
         # abs(targets - outputs) => 0
@@ -503,7 +505,7 @@ def create_model(inputs, targets, classes_real, classes_fake):
     incr_global_step = tf.assign(global_step, global_step+1)
 
     return Model(
-        real_class_preds=real_class_preds,
+        discrim_accuracy=discrim_accuracy,
         predict_real=predict_real,
         predict_fake=predict_fake,
         discrim_loss=ema.average(discrim_loss),
@@ -772,11 +774,13 @@ def main():
         elif a.mode == "discrim":
             # at most, process the test data once
             max_steps = min(examples.steps_per_epoch, max_steps)
-            discrim_fetches = {"real_class_preds" : model.real_class_preds} 
+            discrim_fetches = {"discrim_accuracy" : model.real_class_preds} 
+            accuracy = 0.0
             for step in range(max_steps):
                 results = sess.run(discrim_fetches)
-                preds = results["real_class_preds"]
-                print("made preds", preds)
+                accuracy += results["discrim_accuracy"]
+            accuracy /= max_steps
+            print('discriminator accuracy on targets:', accuracy)
         else:
             # training
             start = time.time()

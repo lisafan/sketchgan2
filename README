@@ -17,6 +17,17 @@ In tools directory:
 	Takes images from a batch and puts them into one png
 	Makes three files for input, output, and target images
 
+-gen_val2.py
+	Takes generated images and runs them through Inception classifier
+	Need to change input_dir line in main
+	Prints misclassified data, Top 1 accuracy, and Top 5 accuracy
+
+-gen_val3.py
+	Takes generated images and runs them through Inception classifier
+	Need to change input_dir line in main
+	Dumps top1/top5 accuracy by class to a json
+	Need to change output_file in run_inference
+
 Models:
 
 - pix2pix_2n.py
@@ -98,10 +109,40 @@ Paper:
 
     8. TODO: inception score + qualitative + semi-supervised classification accuracy
     inception scores:
-        1. real photos: ('scores mean:', 9.1729546, ' scores std:', 0.90772361)
-        2. baseline: ('scores mean:', 5.2578478, ' scores std:', 0.12857515)
-        NOTE: this is after 83k iterations
-
-
+        1. all original photos: ('scores mean:', 9.1729546, ' scores std:', 0.90772361)
+        2. validation photos: ('scores mean:', 74.813187, ' scores std:', 1.4033152)
+        3. orig: ('scores mean:', 5.2578478, ' scores std:', 0.12857515)
+        4. orig2: ('scores mean:', 5.2614627, ' scores std:', 0.16161911)
+        5. nplus1:
+        6. 2n2n:
+        7. 2n:
+        8. pen:
+        9. pen2:
+        10. cond_n:
+        11. image_seg:
+    generated images accuracy:
+        1. all original photos:
+        2. validation photos: (Accuracy: 0.719030437598 Top 5: 0.790359885281)
+        3. orig: (Accuracy: 0.00860394116014 Top 5: 0.0263669164585)
+        4. orig2: (Accuracy: 0.00832639467111 Top 5: 0.0235914515681)
+        5. nplus1:
+        6. 2n2n:
+        7. 2n:
+        8. pen:
+        9. pen2:
+        10. cond_n:
+        11. image_seg:
+    discriminator accuracy:
+        1. all original photos:
+        2. validation photos:
+        3. orig:
+        4. orig2:
+        5. nplus1:
+        6. 2n2n:
+        7. 2n:
+        8. pen:
+        9. pen2:
+        10. cond_n:
+        11. image_seg:
 
 
