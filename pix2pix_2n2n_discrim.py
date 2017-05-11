@@ -52,7 +52,7 @@ CROP_SIZE = 256
 NUM_CLASSES = 125
 
 Examples = collections.namedtuple("Examples", "paths, inputs, targets, classes_real, classes_fake, count, steps_per_epoch")
-Model = collections.namedtuple("Model", "discrim_accuracy, outputs, predict_real, predict_fake, discrim_loss, discrim_grads_and_vars, gen_loss_GAN, gen_loss_L1, gen_grads_and_vars, train")
+Model = collections.namedtuple("Model", "discrim_accuracy, real_class_preds, outputs, predict_real, predict_fake, discrim_loss, discrim_grads_and_vars, gen_loss_GAN, gen_loss_L1, gen_grads_and_vars, train")
 
 
 def preprocess(image):
@@ -260,24 +260,24 @@ def load_examples():
         input_paths = sorted(input_paths)
 
     with tf.name_scope("load_images"):
-	path_queue = tf.train.string_input_producer(input_paths, shuffle=a.mode == "train")
+        path_queue = tf.train.string_input_producer(input_paths, shuffle=a.mode == "train")
         reader = tf.WholeFileReader()
         paths, contents = reader.read(path_queue)
-	#paths = tf.Print(paths, [paths], message="paths:")
-	raw_input = decode(contents)
+    #paths = tf.Print(paths, [paths], message="paths:")
+    raw_input = decode(contents)
     raw_input = tf.image.convert_image_dtype(raw_input, dtype=tf.float32)
-	img_path = tf.string_split([paths], delimiter='/').values[-1]
-	classes = tf.string_to_number(tf.string_split([img_path], delimiter='_').values[0], out_type=tf.int32)
-	# NOTE: may want to use one hots instead of numbers
-	#classes = tf.one_hot(classes, NUM_CLASSES) # or NUM_CLASSES*2 if we want the full real/fake one hot
-	#classes = tf.Print(classes, [img_path, classes], message="one hot", summarize=NUM_CLASSES)	
- 	shape = classes.get_shape().dims 
-	classes_real = classes
-	classes_fake = tf.add(classes, tf.constant(NUM_CLASSES, shape=shape))
-
-	assertion = tf.assert_equal(tf.shape(raw_input)[2], 3, message="image does not have 3 channels")
-        with tf.control_dependencies([assertion]):
-            raw_input = tf.identity(raw_input)
+    img_path = tf.string_split([paths], delimiter='/').values[-1]
+    classes = tf.string_to_number(tf.string_split([img_path], delimiter='_').values[0], out_type=tf.int32)
+    # NOTE: may want to use one hots instead of numbers
+    #classes = tf.one_hot(classes, NUM_CLASSES) # or NUM_CLASSES*2 if we want the full real/fake one hot
+    #classes = tf.Print(classes, [img_path, classes], message="one hot", summarize=NUM_CLASSES) 
+    shape = classes.get_shape().dims 
+    classes_real = classes
+    classes_fake = tf.add(classes, tf.constant(NUM_CLASSES, shape=shape))
+    
+    assertion = tf.assert_equal(tf.shape(raw_input)[2], 3, message="image does not have 3 channels")
+    with tf.control_dependencies([assertion]):
+        raw_input = tf.identity(raw_input)
 
         raw_input.set_shape([None, None, 3])
 
@@ -440,11 +440,11 @@ def create_model(inputs, targets, classes_real, classes_fake):
             #layers.append(output)
             layers.append(convolved)
 
-	# layer 6: [batch, 30, 30, 1] => [batch, 2k]
-	with tf.variable_scope("layer_%d" % (len(layers) + 1)):
-	    conv_flat = tf.reshape(layers[-1], [-1, 30*30*1])
-	    fully_connected = tf.layers.dense(conv_flat, units=(2 * NUM_CLASSES))
-	    layers.append(fully_connected)
+        # layer 6: [batch, 30, 30, 1] => [batch, 2k]
+        with tf.variable_scope("layer_%d" % (len(layers) + 1)):
+            conv_flat = tf.reshape(layers[-1], [-1, 30*30*1])
+            fully_connected = tf.layers.dense(conv_flat, units=(2 * NUM_CLASSES))
+            layers.append(fully_connected)
 
         return layers[-1]
 
@@ -458,16 +458,16 @@ def create_model(inputs, targets, classes_real, classes_fake):
         with tf.variable_scope("discriminator"):
             # 2x [batch, height, width, channels] => [batch, 2k]
             real_outputs = create_discriminator(inputs, targets)
-	    #real_outputs = tf.Print(real_outputs, [real_outputs, real_outputs.get_shape()], message='Real Output:',summarize=5)
+        #real_outputs = tf.Print(real_outputs, [real_outputs, real_outputs.get_shape()], message='Real Output:',summarize=5)
 
     with tf.name_scope("fake_discriminator"):
         with tf.variable_scope("discriminator", reuse=True):
             # 2x [batch, height, width, channels] => [batch, 2k]
             fake_outputs = create_discriminator(inputs, outputs)
-	    #fake_outputs = tf.Print(fake_outputs, [fake_outputs, fake_outputs.get_shape()], message='Fake Output:',summarize=5)
+        #fake_outputs = tf.Print(fake_outputs, [fake_outputs, fake_outputs.get_shape()], message='Fake Output:',summarize=5)
 
     with tf.name_scope("discriminator_loss"):
-        real_softmax = tf.nn.softmax(real_outputs, dim=-1)	
+        real_softmax = tf.nn.softmax(real_outputs, dim=-1)  
         fake_softmax = tf.nn.softmax(fake_outputs, dim=-1)
         predict_real = tf.reduce_sum(real_softmax[:, :NUM_CLASSES], axis=1)
         predict_fake = tf.reduce_sum(fake_softmax[:, NUM_CLASSES:], axis=1)
@@ -475,9 +475,8 @@ def create_model(inputs, targets, classes_real, classes_fake):
         discrim_fake_supervised_loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=classes_fake, logits=fake_outputs))
         discrim_loss = tf.add_n([discrim_real_supervised_loss, discrim_fake_supervised_loss])
 
-        # NOTE: added for discrim
-        real_class_preds = tf.argmax(real_softmax, axis=1)
-        discrim_accuracy = tf.metrics.accuracy(labels=classes_real, predictions=real_class_preds)
+        real_class_preds = tf.cast(tf.argmax(real_softmax, axis=1), tf.int32)
+        discrim_accuracy = tf.contrib.metrics.accuracy(labels=classes_real, predictions=real_class_preds)
 
     with tf.name_scope("generator_loss"):
         # abs(targets - outputs) => 0
@@ -505,6 +504,7 @@ def create_model(inputs, targets, classes_real, classes_fake):
     incr_global_step = tf.assign(global_step, global_step+1)
 
     return Model(
+        real_class_preds=real_class_preds,
         discrim_accuracy=discrim_accuracy,
         predict_real=predict_real,
         predict_fake=predict_fake,
@@ -536,7 +536,7 @@ def save_images(fetches, step=None):
             contents = fetches[kind][i]
             with open(out_path, "wb") as f:
                 f.write(contents)
-	    os.chmod(out_path, 0771)
+        os.chmod(out_path, 0771)
         filesets.append(fileset)
     return filesets
 
@@ -643,8 +643,8 @@ def main():
         init_op = tf.global_variables_initializer()
         restore_saver = tf.train.Saver()
         export_saver = tf.train.Saver()
-	gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.333)
-	
+        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.333)
+    
         with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
             sess.run(init_op)
             print("loading model from checkpoint")
@@ -710,7 +710,7 @@ def main():
             "targets": tf.map_fn(tf.image.encode_png, converted_targets, dtype=tf.string, name="target_pngs"),
             "outputs": tf.map_fn(tf.image.encode_png, converted_outputs, dtype=tf.string, name="output_pngs"),
             #"classes": examples.classes
-	}
+    }
 
     # summaries
     with tf.name_scope("inputs_summary"):
@@ -774,7 +774,7 @@ def main():
         elif a.mode == "discrim":
             # at most, process the test data once
             max_steps = min(examples.steps_per_epoch, max_steps)
-            discrim_fetches = {"discrim_accuracy" : model.real_class_preds} 
+            discrim_fetches = {"discrim_accuracy" : model.discrim_accuracy} 
             accuracy = 0.0
             for step in range(max_steps):
                 results = sess.run(discrim_fetches)

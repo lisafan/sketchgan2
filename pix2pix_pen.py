@@ -15,7 +15,7 @@ import time
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--input_dir", help="path to folder containing images")
-parser.add_argument("--mode", required=True, choices=["train", "test", "export"])
+parser.add_argument("--mode", required=True, choices=["discrim", "train", "test", "export"])
 parser.add_argument("--output_dir", required=True, help="where to put output files")
 parser.add_argument("--seed", type=int)
 parser.add_argument("--checkpoint", default=None, help="directory with checkpoint to resume training from or use for testing")
@@ -53,7 +53,7 @@ CROP_SIZE = 256
 NUM_CLASSES = 125
 
 Examples = collections.namedtuple("Examples", "paths, inputs, targets, classes_real, classes_fake, count, steps_per_epoch")
-Model = collections.namedtuple("Model", "outputs, discrim_loss, discrim_grads_and_vars, gen_loss_GAN, gen_loss_L1, gen_grads_and_vars, train")
+Model = collections.namedtuple("Model", "discrim_accuracy, outputs, discrim_loss, discrim_grads_and_vars, gen_loss_GAN, gen_loss_L1, gen_grads_and_vars, train")
 
 
 def preprocess(image):
@@ -512,6 +512,9 @@ def create_model(inputs, targets, classes_real, classes_fake):
         discrim_fake_supervised_loss = tf.reduce_sum(tf.multiply(fake_cross_entropy, fake_penalty))
         discrim_loss = tf.add_n([discrim_real_supervised_loss, discrim_fake_supervised_loss])
 
+        real_softmax = tf.nn.softmax(real_outputs, dim=-1)  
+        real_class_preds = tf.cast(tf.argmax(real_softmax, axis=1), tf.int32)
+        discrim_accuracy = tf.contrib.metrics.accuracy(labels=classes_real, predictions=real_class_preds)
     with tf.name_scope("generator_loss"):
         # abs(targets - outputs) => 0
         gen_penalty = create_penalties(classes_real, fake_outputs)
@@ -540,6 +543,7 @@ def create_model(inputs, targets, classes_real, classes_fake):
     incr_global_step = tf.assign(global_step, global_step+1)
 
     return Model(
+        discrim_accuracy=discrim_accuracy,
         discrim_loss=ema.average(discrim_loss),
         discrim_grads_and_vars=discrim_grads_and_vars,
         gen_loss_GAN=ema.average(gen_loss_GAN),
@@ -613,7 +617,7 @@ def main():
     if not os.path.exists(a.output_dir):
         os.makedirs(a.output_dir)
 
-    if a.mode == "test" or a.mode == "export":
+    if a.mode == "test" or a.mode == "export" or a.mode == "discrim":
         if a.checkpoint is None:
             raise Exception("checkpoint required for test mode")
 
@@ -803,6 +807,16 @@ def main():
                 index_path = append_index(filesets)
 
             print("wrote index at", index_path)
+        elif a.mode == "discrim":
+            # at most, process the test data once
+            max_steps = min(examples.steps_per_epoch, max_steps)
+            discrim_fetches = {"discrim_accuracy" : model.discrim_accuracy} 
+            accuracy = 0.0
+            for step in range(max_steps):
+                results = sess.run(discrim_fetches)
+                accuracy += results["discrim_accuracy"]
+            accuracy /= max_steps
+            print('discriminator accuracy on targets:', accuracy)
         else:
             # training
             start = time.time()

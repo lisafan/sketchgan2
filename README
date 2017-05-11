@@ -113,36 +113,35 @@ Paper:
         2. validation photos: ('scores mean:', 74.813187, ' scores std:', 1.4033152)
         3. orig: ('scores mean:', 5.2578478, ' scores std:', 0.12857515)
         4. orig2: ('scores mean:', 5.2614627, ' scores std:', 0.16161911)
-        5. nplus1:
-        6. 2n2n:
-        7. 2n:
-        8. pen:
-        9. pen2:
-        10. cond_n:
-        11. image_seg:
+        5. 2n2n: ('scores mean:', 6.1084046, ' scores std:', 0.11478753)
+        6. 2n: ('scores mean:', 5.0989408, ' scores std:', 0.11322323)
+        7. pen: ('scores mean:', 6.4307909, ' scores std:', 0.19561777)
+        8. pen2: ('scores mean:', 6.2003007, ' scores std:', 0.10216211)
+        9. cond_n: ('scores mean:', 4.2493067, ' scores std:', 0.074722126)
+        10. image_seg: ('scores mean:', 5.9599605, ' scores std:', 0.24508114)
+        11. image segmented validation photos: ('scores mean:', 13.329549, ' scores std:', 0.89784962)
     generated images accuracy:
         1. all original photos:
         2. validation photos: (Accuracy: 0.719030437598 Top 5: 0.790359885281)
         3. orig: (Accuracy: 0.00860394116014 Top 5: 0.0263669164585)
         4. orig2: (Accuracy: 0.00832639467111 Top 5: 0.0235914515681)
-        5. nplus1:
-        6. 2n2n:
-        7. 2n:
-        8. pen:
-        9. pen2:
-        10. cond_n:
-        11. image_seg:
+        5. 2n2n: (Accuracy: 0.00481080580997 Top 5: 0.0189656767509)
+        6. 2n: (Accuracy: 0.00582847626978, Top 5: 0.0221112036266)
+        7. pen: (Accuracy: 0.00962161161995, Top 5 Accuracy: 0.0271070404293)
+        8. pen2: (Accuracy: 0.0085114256638, Top 5: 0.0244240910352)
+        9. cond_n: (Accuracy: 0.0105467665834, Top 5: 0.0312702377648)
+        10. image_seg: (Accuracy: 0.0198717948718, Top 5 Accuracy: 0.0442307692308)
+	11. image segmented validation photos: (Accuracy: 0.405769230769, Top 5: 0.605128205128)
     discriminator accuracy:
         1. all original photos:
         2. validation photos:
         3. orig:
         4. orig2:
-        5. nplus1:
-        6. 2n2n:
-        7. 2n:
-        8. pen:
-        9. pen2:
-        10. cond_n:
-        11. image_seg:
-
+        5. 2n2n: 0.269785502959
+        6. 2n: 0.0183062130178
+        7. pen: 0.102625739645
+        8. pen2: 0.290865384615
+        9. cond_n:
+        10. image_seg:
+	11. image segmented validation photos:
 
